@@ -23,13 +23,34 @@ def get_top_tracks(sp, limit=50):
             "name": item["name"],
             "artist": item["artists"][0]["name"],
             "album": item["album"]["name"],
-            "popularity": item["popularity"]
+            "popularity": item.get("popularity", 0)
+        }
+        tracks.append(track)
+    return tracks
+
+def get_recently_played(sp, limit=50):
+    results = sp.current_user_recently_played(limit=limit)
+    tracks = []
+    for item in results["items"]:
+        track = {
+            "id": item["track"]["id"],
+            "name": item["track"]["name"],
+            "artist": item["track"]["artists"][0]["name"],
+            "album": item["track"]["album"]["name"],
+            "played_at": item["played_at"]
         }
         tracks.append(track)
     return tracks
 
 if __name__ == "__main__":
     sp = get_spotify_client()
+
+    print("--- TOP TRACKS ---")
     tracks = get_top_tracks(sp)
     for track in tracks[:5]:
+        print(track)
+
+    print("\n--- RECENTLY PLAYED ---")
+    recent = get_recently_played(sp)
+    for track in recent[:5]:
         print(track)
