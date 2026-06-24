@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+from extract.public_playlist import get_client_credentials_token, extract_playlist_id, get_playlist_tracks
+from recommend.matching import load_dataset, match_playlist_tracks
+from recommend.similarity import get_recommendations, explain_recommendation
+
 @st.cache_data
 def load_top_tracks():
     return pd.read_csv("data/top_tracks.csv")
@@ -64,3 +68,55 @@ fig3 = px.line(
     title="Songs Played Per Day"
 )
 st.plotly_chart(fig3, use_container_width=True)
+
+# --- Section 5: Playlist Recommender (the part anyone can use, no login needed) ---
+st.divider()
+st.subheader("🔎 Find songs similar to YOUR playlist")
+st.markdown("Paste any public Spotify playlist link and get song recommendations based on its overall vibe.")
+
+playlist_url = st.text_input("Spotify playlist link", placeholder="https://open.spotify.com/playlist/...")
+go = st.button("Get Recommendations", type="primary")
+
+if go:
+    if not playlist_url:
+        st.error("Paste a playlist link first.")
+    else:
+        playlist_id = extract_playlist_id(playlist_url)
+        if not playlist_id:
+            st.error("Couldn't read that link. Make sure it's a public Spotify playlist URL.")
+        else:
+            try:
+                with st.spinner("Reading your playlist..."):
+                    token = get_client_credentials_token()
+                    playlist_tracks = get_playlist_tracks(playlist_id, token)
+
+                if not playlist_tracks:
+                    st.warning("That playlist looks empty, or it might be private.")
+                else:
+                    with st.spinner("Matching tracks and finding similar songs..."):
+                        dataset = load_dataset()
+                        matched, unmatched_count = match_playlist_tracks(playlist_tracks, dataset)
+
+                    if matched.empty:
+                        st.warning("Couldn't match any songs from this playlist to our dataset. Try a different playlist!")
+                    else:
+                        st.success(f"Matched {len(matched)} of {len(playlist_tracks)} songs "
+                                   f"({unmatched_count} not found in our dataset)")
+
+                        recs = get_recommendations(matched, dataset, n_recommendations=10)
+
+                        st.markdown("#### Recommended for you")
+                        for i, row in recs.iterrows():
+                            because = explain_recommendation(row, matched)
+                            col1, col2 = st.columns([5, 1])
+                            with col1:
+                                st.write(f"**{row['track_name']}** — {row['artists']}")
+                                st.caption(f"Similar to: {', '.join(because)}")
+                            with col2:
+                                st.button("👍", key=f"up_{i}")
+                                st.button("👎", key=f"down_{i}")
+
+            except ValueError as e:
+                st.error(str(e))
+            except Exception as e:
+                st.error(f"Something went wrong: {e}")
